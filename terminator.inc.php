@@ -3,7 +3,6 @@ require_once('../modelos/conector_mysql.inc.php');
 class T800 extends ConexionMysql
 {
     //variables que sirven para el envio de la información
-    public $_CREDENCIAL = array(); //arreglo donde van todas las variables para cada modulo
     protected $_PASSWORD=null;
     protected $_USUARIO=null;
 /********************************************************/
@@ -13,34 +12,49 @@ class T800 extends ConexionMysql
     
         protected function verificarAcceso() 
         {
-            parent::ejecutaConsultas("SELECT usuario_identificacion as user ,password_identificacion as pass , candado_identificacion as candado from jc_identificaciones
+            parent::ejecutaConsultas("SELECT usuario_identificacion as user ,password_identificacion as pass , candado_identificacion as candado ,fecha_identificacion as hash from jc_identificaciones
                                   where usuario_identificacion = '$this->_USUARIO'"); 
             $identificacion = $this->_QUERY->fetch();//obtenemos el arreglo de las identificaciones
                 if ($identificacion)
                 { //existe un registro
                     if($identificacion['candado']!=0)
                       {//verificar si el usuario esta deshabilitado 
-                        $acceso = (strcmp($identificacion['pass'],$this->_PASSWORD) == 0) ? 1 : "2#El password que ha proporcionado es incorrecto"; /*si es 1 si es el password si es 0  no es password*/ 
+                        $acceso = (strcmp($identificacion['pass'],$this->seguridadPassword($this->_PASSWORD,$identificacion['hash'],3))==0) ? 1 : "2#<strong>Precaución ! </strong>El password que ha proporcionado es incorrecto"; /*si es 1 si es el password si es 0  no es password*/ 
                       }
                       else
                           {
-                          $acceso="3#El usuario esta deshabilitado por el sistema";
+                          $acceso="3#<strong>Alerta !</strong>El usuario esta deshabilitado por el sistema";
                           }          
                 }// en caso que no exista el registro
                 else
                     {
-                    $acceso = "4#El usuario no esta registrado en el sistema";
+                    $acceso = "4#<strong>Error ! </strong>El usuario no esta registrado en el sistema";
                     }  
             return $acceso;
         } // funcion que valida los datos del usuario para que pueda acceder ala aplicación
-
-     protected function seguridadPassword($password,$datetime)
+        
+     public function seguridadPassword($password,$datetime,$type)
         {
-            return crypt($password,$this->giveHash($datetime));
+         switch ($type)
+         {
+            case 1: 
+                    $encryp = crypt($password,$this->giveHash($datetime));
+                    break;
+            case 2: 
+                    $encryp = md5($password);
+                    break;
+            case 3:
+                   $encryp=$this->encrypt($password,$datetime);
+                    break;
+            case 4:
+                    $encryp=$this->decrypt($password,$datetime);
+                    break;
+         }
+         return $encryp;
         }//fin de la funcion encriptaPassword
 
 
-        private function giveHash($datetime)
+        public function giveHash($datetime)
         { //funcion que nos permitira obtener el hash apartir del dia que se dio de alta
                 $semilla = 33;//este numero es para que se puedan visualizar un caracter y no arroje datos erroneos
                 list($fecha,$tiempo) = explode(" ", $datetime);
@@ -79,7 +93,19 @@ class T800 extends ConexionMysql
                     }
     }//fin de la funcion cookies version beta
     
-
+        protected function administracionPassword($acceso)
+        {
+             $servicios = array();//crea los servicios
+            parent::ejecutaConsultas("select lls.tipo_servicio as servicio,lls.usuario_servicio as usuario , lls.password_servicio as password 
+                     from jc_identificaciones as i inner join llavero_servicios as lls on i.pk_id_identificacion = lls.fk_id_identificaciones_servicios where i.usuario_identificacion = '$acceso'"); 
+              while($llavero = $this->_QUERY->fetch()): 
+                $servicios[$llavero['servicio']] = $llavero['servicio'];
+                $servicios[$llavero['servicio']] = array("usuario"=>$llavero['usuario'],'password'=>$llavero['password']);
+             endwhile;
+            return $servicios;
+            // return $llaves;
+        }//fin la funcion de administracion de llaveros de passwords
+        
         protected function administracionCookies($usuario,$password,$checkbox)
         {
             if($checkbox==1)
@@ -94,21 +120,25 @@ class T800 extends ConexionMysql
                 }
         }//findecrearcookies version beta
      
-        protected function generaCredencial($usuario)
+    
+        protected function setsessionGlobals($usuario)
         {
-            $datos= parent::getClavesSeguridad("SELECT r.pk_id_rol as privilegio,i.pk_id_identificacion as usuario ,c.foto_credencial as foto,
-                        c.nombre_credencial as nombre,p.nombre_perfil as perfil from jc_roles as r inner join jc_perfiles as p inner join jc_identificaciones as i 
-                        inner join jc_credenciales as c on r.pk_id_rol = p.fk_roles_perfiles and  p.pk_id_perfil = i.fk_perfiles_identificaciones and 
-                        i.pk_id_identificacion = c.fk_identificaciones_credenciales where i.usuario_identificacion ='$usuario'");
-            $this->_CREDENCIAL['privilegio']=$datos['privilegio'];//dato para saber aque modulos puede entrar y aque no
-            $this->_CREDENCIAL['usuario']=$datos['usuario'];//el id del usuario el cual identificara en todo el trayecto del sistema
-            $this->_CREDENCIAL['foto']=$datos['foto'];//fotografia del usuario
-            $this->_CREDENCIAL['nombre']=$datos['nombre'];//nombre del usuario
-            $this->_CREDENCIAL['perfil']=$datos['perfil'];//puesto del usuario
-        }//generaPrivilegios Extrae toda la informacion necesaria para evaluar sus acceso version beta
-    
+            $sesiones= array();//crea las sesiones
+            parent::ejecutaConsultas("select pk_id_identificacion as clave , usuario_identificacion as user , fecha_identificacion as hash from jc_identificaciones where usuario_identificacion ='$usuario';");
+            $datos = $this->_QUERY->fetch();
+            $sesiones['clave']=$datos['clave'];//el pk para todo el sistema
+            $sesiones['user']=$datos['user'];//el user para todo el sistema
+            $sesiones['hash']=$datos['hash'];//el hash para todo el sistema
+            return $sesiones;
+        }//fin de genera sesiones
 
-
-    
+        private function encrypt($input,$Key) {
+            $output = base64_encode(mcrypt_encrypt(MCRYPT_RIJNDAEL_256, md5($Key), $input, MCRYPT_MODE_CBC, md5(md5($Key))));
+                return $output;
+        }
+        private function decrypt($input,$Key) {
+            $output = rtrim(mcrypt_decrypt(MCRYPT_RIJNDAEL_256, md5($Key), base64_decode($input), MCRYPT_MODE_CBC, md5(md5($Key))), "\0");
+                return $output;
+    }
 
 }//fin de la clase
