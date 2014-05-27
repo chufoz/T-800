@@ -25,7 +25,6 @@ class AccesoSistema extends T800{
                 {
                  session_start();//crea la variable para estar activo siempre en el sistema  
                  $_SESSION['globales']=parent::setsessionGlobals($usuario);//clave,user,hash
-                 $_SESSION['llavero']=parent::administracionPassword($usuario);//sessiones de llavero
                  echo $flag;
                 }
                 else

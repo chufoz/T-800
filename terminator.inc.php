@@ -93,18 +93,6 @@ class T800 extends ConexionMysql
                     }
     }//fin de la funcion cookies version beta
     
-        protected function administracionPassword($acceso)
-        {
-             $servicios = array();//crea los servicios
-            parent::ejecutaConsultas("select lls.tipo_servicio as servicio,lls.usuario_servicio as usuario , lls.password_servicio as password 
-                     from jc_identificaciones as i inner join llavero_servicios as lls on i.pk_id_identificacion = lls.fk_id_identificaciones_servicios where i.usuario_identificacion = '$acceso'"); 
-              while($llavero = $this->_QUERY->fetch()): 
-                $servicios[$llavero['servicio']] = $llavero['servicio'];
-                $servicios[$llavero['servicio']] = array("usuario"=>$llavero['usuario'],'password'=>$llavero['password']);
-             endwhile;
-            return $servicios;
-            // return $llaves;
-        }//fin la funcion de administracion de llaveros de passwords
         
         protected function administracionCookies($usuario,$password,$checkbox)
         {
